@@ -99,8 +99,9 @@ class TrainerVAE:
             voxel_loss_epoch += voxel_loss_step
             kl_loss_epoch += kl_loss_step
 
-            p_bar.set_postfix({"Loss": loss_epoch})
-            p_bar.update(1)
+            p_bar.set_description(
+                f"Epoch [{epoch}/{self.config['training']['epochs']}], Loss: {loss_epoch:.4f}, Voxel Loss: {voxel_loss_epoch:.4f}, KL Loss: {kl_loss_epoch:.4f}"
+            )
 
         avg_loss = loss_epoch / len(self.train_loader)
         avg_voxel_loss = voxel_loss_epoch / len(self.train_loader)
@@ -180,7 +181,7 @@ class TrainerVAE:
             )
 
             print(
-                f'Epoch {epoch}/{self.config["training"]["epochs"]}, Loss: {avg_loss_epoch:.4f}'
+                f"Epoch [{epoch}/{self.config['training']['epochs']}], Loss: {avg_loss_epoch:.4f}, Voxel Loss: {avg_voxel_loss_epoch:.4f}, KL Loss: {avg_kl_loss_epoch:.4f}"
             )
 
             wandb.log(
