@@ -87,13 +87,10 @@ class TrainerVAE:
         p_bar = tqdm(
             self.train_loader,
             total=len(self.train_loader),
-            desc=f"Epoch {epoch}/{self.config['training']['epochs']}",
         )
         for i, batch in enumerate(p_bar):
             data = batch["voxels"]
-            loss_step, voxel_loss_step, kl_loss_step, recon_batch, mu, logvar = (
-                self.train_step(data)
-            )
+            loss_step, voxel_loss_step, kl_loss_step, _, _, _ = self.train_step(data)
 
             loss_epoch += loss_step
             voxel_loss_epoch += voxel_loss_step
