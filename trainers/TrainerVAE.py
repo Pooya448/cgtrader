@@ -5,6 +5,9 @@ import torch.nn.functional as F
 from torch import nn
 from models.VoxelVAE import VoxelVAE
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+from pathlib import Path
+import wandb
 
 
 class TrainerVAE:
@@ -14,91 +17,166 @@ class TrainerVAE:
 
         # Initialize dataset and dataloader
         self.dataset = ShapeNetDataset(args=config["data"])
-        self.dataloader = self.dataset.get_loader()
+        self.train_loader = self.dataset.get_loader(train=True)
+        self.test_loader = self.dataset.get_loader(train=False)
 
         # Initialize model
         self.model = VoxelVAE(args=config["model"]).to(self.device)
 
+        self.learning_rate = float(config["training"]["learning_rate"])
+        self.l2_lambda = config["training"].get("l2_lambda", 0.0)
+
         # Initialize optimizer
-        self.optimizer = optim.Adam(
-            self.model.parameters(), lr=float(config["training"]["learning_rate"])
-        )
-        self.l2_lambda = float(config["training"].get("l2_lambda", 0.0))
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
-    def weighted_binary_crossentropy(self, output, target):
-        return (
-            -(
-                98.0 * target * torch.log(output)
-                + 2.0 * (1.0 - target) * torch.log(1.0 - output)
+        self.checkpoint_freq = config["training"]["checkpoint_freq"]
+        self.visualize_freq = config["training"]["visualize_freq"]
+
+        Path("checkpoints").mkdir(parents=True, exist_ok=True)
+        Path("vis").mkdir(parents=True, exist_ok=True)
+
+    def step_loss(self, recon_x, x, mu, logvar):
+
+        def weighted_binary_crossentropy(output, target):
+            return (
+                -(
+                    98.0 * target * torch.log(output)
+                    + 2.0 * (1.0 - target) * torch.log(1.0 - output)
+                )
+                / 100.0
             )
-            / 100.0
-        )
-
-    def train_step_loss(self, recon_x, x, mu, logvar):
 
         recon_x = torch.clamp(torch.sigmoid(recon_x), 1e-7, 1.0 - 1e-7)
 
         # Voxel-wise Reconstruction Loss using weighted binary cross-entropy
-        voxel_loss = torch.mean(self.weighted_binary_crossentropy(recon_x, x).float())
+        voxel_loss = torch.mean(weighted_binary_crossentropy(recon_x, x).float())
 
         # KL Divergence from isotropic Gaussian prior
-        kl_div = -0.5 * torch.mean(1 + 2 * logvar - mu.pow(2) - (2 * logvar).exp())
+        kl_loss = -0.5 * torch.mean(1 + 2 * logvar - mu.pow(2) - (2 * logvar).exp())
 
-        return voxel_loss + kl_div
-        # # BCE = torch.nn.functional.binary_cross_entropy(recon_x, x, reduction="mean")
-
-        # # x = torch.clamp(x, min=-1, max=2)
-        # # recon_x = torch.clamp(recon_x, min=0.1, max=1.0)
-        # gamma = 0.97
-        # # Modified BCE loss
-        # BCE = -gamma * x * torch.log(recon_x) - (1 - gamma) * (1 - x) * torch.log(
-        #     1 - recon_x
-        # )
-        # BCE = BCE.mean()
-
-        # print(BCE)
-
-        # KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        # KLD = KLD.mean()
-
-        # l2_reg = torch.tensor(0.0).to(self.device)
-        # for param in self.model.parameters():
-        #     l2_reg += torch.norm(param)
-
-        # return BCE + KLD + self.l2_lambda * l2_reg
-
-        # return BCE + KLD
+        return voxel_loss, kl_loss
 
     def train_step(self, data):
         data = data.to(self.device)
         self.optimizer.zero_grad()
         recon_batch, mu, logvar = self.model(data)
-        loss = self.train_step_loss(recon_batch, data, mu, logvar)
-        loss.backward()
+        voxel_loss_step, kl_loss_step = self.step_loss(recon_batch, data, mu, logvar)
+        loss_step = voxel_loss_step + kl_loss_step
+        loss_step.backward()
         self.optimizer.step()
-        return loss.item(), recon_batch, mu, logvar
+        return (
+            loss_step.item(),
+            voxel_loss_step.item(),
+            kl_loss_step.item(),
+            recon_batch,
+            mu,
+            logvar,
+        )
 
-    def train(self, epoch):
+    def train_epoch(self, epoch):
         self.model.train()
-        train_loss = 0
+
+        loss_epoch = 0
+        voxel_loss_epoch = 0
+        kl_loss_epoch = 0
+
         p_bar = tqdm(
-            self.dataloader,
-            total=len(self.dataloader),
+            self.train_loader,
+            total=len(self.train_loader),
             desc=f"Epoch {epoch}/{self.config['training']['epochs']}",
         )
-        for i, batch in enumerate(self.dataloader):
+        for i, batch in enumerate(p_bar):
             data = batch["voxels"]
-            loss, _, _, _ = self.train_step(data)
-            train_loss += loss
-            p_bar.set_postfix({"Loss": loss})
+            loss_step, voxel_loss_step, kl_loss_step, recon_batch, mu, logvar = (
+                self.train_step(data)
+            )
+
+            loss_epoch += loss_step
+            voxel_loss_epoch += voxel_loss_step
+            kl_loss_epoch += kl_loss_step
+
+            p_bar.set_postfix({"Loss": loss_epoch})
             p_bar.update(1)
-            # print(f"Batch {i}/{len(self.dataloader)}, Loss: {loss:.6f}")
-        return train_loss / len(self.dataloader.dataset)
+
+        avg_loss = loss_epoch / len(self.train_loader)
+        avg_voxel_loss = voxel_loss_epoch / len(self.train_loader)
+        avg_kl_loss = kl_loss_epoch / len(self.train_loader)
+
+        return avg_loss, avg_voxel_loss, avg_kl_loss
+
+    def test(self):
+        self.model.eval()
+
+        test_loss = 0
+
+        with torch.no_grad():
+            for batch in tqdm(self.test_loader, desc="Testing"):
+                data = batch["voxels"].to(self.device)
+                recon_batch, mu, logvar = self.model(data)
+                loss = self.step_loss(recon_batch, data, mu, logvar)
+                test_loss += loss
+        return test_loss / len(self.test_loader.dataset)
+
+    def sample_and_visualize(self, epoch):
+
+        self.model.eval()
+
+        with torch.no_grad():
+            z = torch.randn(8, self.model.latent_dim).to(self.device)
+            samples = self.model.decode(z).cpu().numpy()
+            samples = samples.squeeze()
+
+            fig = plt.figure(figsize=(15, 3))
+            for i in range(samples.shape[0]):
+                ax = fig.add_subplot(1, 8, i + 1, projection="3d")
+                ax.voxels(samples[i] > 0.5, edgecolor="k")
+                ax.set_axis_off()
+
+            plt.suptitle(f"Samples at Epoch {epoch}")
+            vis_path = f"vis/samples_epoch_{epoch}.png"
+            plt.savefig(vis_path)
+            plt.close(fig)
+
+            wandb.log(
+                {
+                    "Samples": [
+                        wandb.Image(vis_path, caption=f"Samples at Epoch {epoch}")
+                    ]
+                },
+                step=epoch,
+            )
 
     def run(self):
+
         for epoch in range(1, self.config["training"]["epochs"] + 1):
-            train_loss = self.train(epoch)
-            print(
-                f'Epoch {epoch}/{self.config["training"]["epochs"]}, Loss: {train_loss:.4f}'
+            avg_loss_epoch, avg_voxel_loss_epoch, avg_kl_loss_epoch = self.train_epoch(
+                epoch
             )
-        torch.save(self.model.state_dict(), "checkpoints/VAE/vae.pth")
+
+            print(
+                f'Epoch {epoch}/{self.config["training"]["epochs"]}, Loss: {avg_loss_epoch:.4f}'
+            )
+
+            wandb.log(
+                {
+                    "Epoch Train Loss": avg_loss_epoch,
+                    "Epoch MSE Loss": avg_voxel_loss_epoch,
+                    "Epoch KLD Loss": avg_kl_loss_epoch,
+                },
+                step=epoch,
+            )
+
+            if epoch % self.checkpoint_freq == 0:
+                checkpoint_path = f"checkpoints/vae_epoch_{epoch}.pth"
+                torch.save(self.model.state_dict(), checkpoint_path)
+                print(f"Model checkpoint saved to {checkpoint_path}")
+
+            if epoch % self.visualize_freq == 0:
+                self.sample_and_visualize(epoch)
+
+        torch.save(self.model.state_dict(), "checkpoints/vae_final.pth")
+
+        test_loss = self.test()
+        print(f"Test Loss: {test_loss:.4f}")
+
+        wandb.log_artifact(self.model)

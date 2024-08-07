@@ -1,6 +1,7 @@
 import argparse
 from config.parse import load_config
 from trainers.TrainerVAE import TrainerVAE
+import wandb
 
 
 def main(model_type):
@@ -12,7 +13,13 @@ def main(model_type):
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
 
+    # Initialize wandb
+    wandb.init(project="3DGen-Task", config=config)
+    config = wandb.config
+
     trainer.run()
+
+    wandb.finish()
 
 
 if __name__ == "__main__":
