@@ -37,7 +37,8 @@ class ShapeNetDataset(Dataset):
     def __getitem__(self, idx):
         file_path = self.files[idx]
         voxel_data = dd.io.load(str(file_path))["data"]
-        voxel_tensor = torch.tensor(voxel_data, dtype=torch.float32).unsqueeze(0)
+        voxel_tensor = torch.tensor(voxel_data, dtype=torch.float32)
+        voxel_tensor = torch.permute(voxel_tensor, (2, 0, 1)).unsqueeze(0)
         voxel_tensor = voxel_tensor * 0.5 + 0.5
         return {"voxels": voxel_tensor}
 

@@ -8,13 +8,23 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pathlib import Path
 import wandb
-from visualize import save_voxel_as_mesh
+from visualize import save_voxel_as_mesh, crop_voxels
+import numpy as np
 
 
 class TrainerVAE:
     def __init__(self, config):
         self.config = config
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+            print("Using CUDA")
+        elif torch.backends.mps.is_built() and torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+            print("Using MPS")
+        else:
+            self.device = torch.device("cpu")
+            print("Using CPU")
 
         # Initialize dataset and dataloader
         self.dataset = ShapeNetDataset(args=config["data"])
@@ -97,7 +107,7 @@ class TrainerVAE:
             kl_loss_epoch += kl_loss_step
 
             p_bar.set_description(
-                f"Epoch [{epoch}/{self.config['training']['epochs']}], Loss: {loss_epoch:.4f}, Voxel Loss: {voxel_loss_epoch:.4f}, KL Loss: {kl_loss_epoch:.4f}"
+                f"Epoch [{epoch}/{self.config['training']['epochs']}], Step Loss: {loss_step:.4f}, Step Voxel Loss: {voxel_loss_step:.4f}, Step KL Loss: {kl_loss_step:.4f}"
             )
 
         avg_loss = loss_epoch / len(self.train_loader)
@@ -115,8 +125,9 @@ class TrainerVAE:
             for batch in tqdm(self.test_loader, desc="Testing"):
                 data = batch["voxels"].to(self.device)
                 recon_batch, mu, logvar = self.model(data)
-                loss = self.step_loss(recon_batch, data, mu, logvar)
-                test_loss += loss
+                voxel_loss, kl_loss = self.step_loss(recon_batch, data, mu, logvar)
+                loss_total = voxel_loss + kl_loss
+                test_loss += loss_total
         return test_loss / len(self.test_loader.dataset)
 
     def sample_and_generate_mesh(self, epoch):
@@ -131,13 +142,7 @@ class TrainerVAE:
             save_voxel_as_mesh(voxel, file_path)
 
             wandb.log(
-                {
-                    "Sampled Mesh": [
-                        wandb.Object3D(
-                            file_path, caption=f"Sampled Mesh at Epoch {epoch}"
-                        )
-                    ]
-                },
+                {"Sampled Mesh": [wandb.Object3D(open(file_path))]},
                 step=epoch,
             )
 
@@ -146,27 +151,26 @@ class TrainerVAE:
         self.model.eval()
 
         with torch.no_grad():
-            z = torch.randn(8, self.model.latent_dim).to(self.device)
+            z = torch.randn(4, self.model.latent_dim).to(self.device)
             samples = self.model.decode(z).cpu().numpy()
             samples = samples.squeeze()
 
-            fig = plt.figure(figsize=(15, 3))
+            fig = plt.figure(figsize=(40, 20))
+
             for i in range(samples.shape[0]):
-                ax = fig.add_subplot(1, 8, i + 1, projection="3d")
-                ax.voxels(samples[i] > 0.5, edgecolor="k")
+                sample = samples[i].copy()
+                ax = fig.add_subplot(1, 4, i + 1, projection="3d")
+                ax.voxels(sample > 0.5, facecolors="cyan", edgecolor="k")
                 ax.set_axis_off()
+                ax.view_init(elev=30, azim=45)
 
             plt.suptitle(f"Samples at Epoch {epoch}")
-            vis_path = f"vis/samples_epoch_{epoch}.png"
+            vis_path = self.vis_dir / f"samples_epoch_{epoch}.png"
             plt.savefig(vis_path)
             plt.close(fig)
 
             wandb.log(
-                {
-                    "Samples": [
-                        wandb.Image(vis_path, caption=f"Samples at Epoch {epoch}")
-                    ]
-                },
+                {"Samples": [wandb.Image(str(vis_path))]},
                 step=epoch,
             )
 
@@ -178,7 +182,7 @@ class TrainerVAE:
             )
 
             print(
-                f"Epoch [{epoch}/{self.config['training']['epochs']}], Loss: {avg_loss_epoch:.4f}, Voxel Loss: {avg_voxel_loss_epoch:.4f}, KL Loss: {avg_kl_loss_epoch:.4f}"
+                f"Epoch [{epoch}/{self.config['training']['epochs']}], Epoch Loss: {avg_loss_epoch:.4f}, Epoch Voxel Loss: {avg_voxel_loss_epoch:.4f}, Epoch KL Loss: {avg_kl_loss_epoch:.4f}"
             )
 
             wandb.log(
@@ -197,6 +201,7 @@ class TrainerVAE:
 
             if epoch % self.visualize_freq == 0:
                 self.sample_and_visualize(epoch)
+                self.sample_and_generate_mesh(epoch)
 
         torch.save(self.model.state_dict(), "checkpoints/vae_final.pth")
 
