@@ -1,0 +1,15 @@
+data:
+  dataset_path: 'data/'  # default dataset path
+  batch_size: 64
+  shuffle: True
+  num_workers: 4
+  class_code: '03001627'  # Class code -> Chairs: 03001627, Tables: 04379243
+
+training:
+  epochs: 100
+  learning_rate: 1e-4
+  l2_lambda: 1e-5  # L2 regularization term
+
+model:
+  latent_dim: 256
+  type: 'VAE'
