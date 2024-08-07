@@ -189,7 +189,7 @@ class TrainerVAE:
             wandb.log(
                 {
                     "Epoch Train Loss": avg_loss_epoch,
-                    "Epoch MSE Loss": avg_voxel_loss_epoch,
+                    "Epoch BCE Loss": avg_voxel_loss_epoch,
                     "Epoch KLD Loss": avg_kl_loss_epoch,
                 },
                 step=epoch,
