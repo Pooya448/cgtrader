@@ -35,10 +35,11 @@ class TrainerVAE:
         self.model = VoxelVAE(args=config["model"]).to(self.device)
 
         self.learning_rate = float(config["training"]["learning_rate"])
-        self.l2_lambda = config["training"].get("l2_lambda", 0.0)
 
         # Initialize optimizer
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = optim.Adam(
+            self.model.parameters(), lr=self.learning_rate, weight_decay=1e-5
+        )
 
         self.checkpoint_freq = config["training"]["checkpoint_freq"]
         self.visualize_freq = config["training"]["visualize_freq"]

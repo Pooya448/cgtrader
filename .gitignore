@@ -2,5 +2,4 @@
 data/
 checkpoints/
 wandb/
-vis/
 __pycache__
