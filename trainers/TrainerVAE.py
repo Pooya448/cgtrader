@@ -8,6 +8,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pathlib import Path
 import wandb
+from visualize import save_voxel_as_mesh
 
 
 class TrainerVAE:
@@ -32,8 +33,11 @@ class TrainerVAE:
         self.checkpoint_freq = config["training"]["checkpoint_freq"]
         self.visualize_freq = config["training"]["visualize_freq"]
 
-        Path("checkpoints").mkdir(parents=True, exist_ok=True)
-        Path("vis").mkdir(parents=True, exist_ok=True)
+        self.checkpoint_dir = Path("checkpoints")
+        self.vis_dir = Path("vis")
+
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.vis_dir.mkdir(parents=True, exist_ok=True)
 
     def step_loss(self, recon_x, x, mu, logvar):
 
@@ -116,6 +120,28 @@ class TrainerVAE:
                 loss = self.step_loss(recon_batch, data, mu, logvar)
                 test_loss += loss
         return test_loss / len(self.test_loader.dataset)
+
+    def sample_and_generate_mesh(self, epoch):
+        self.model.eval()
+
+        with torch.no_grad():
+            z = torch.randn(1, self.model.latent_dim).to(self.device)
+            voxel = self.model.decode(z).cpu().numpy()
+            voxel = voxel.squeeze()
+
+            file_path = self.vis_dir / f"sampled_mesh_epoch-{epoch}.obj"
+            save_voxel_as_mesh(voxel, file_path)
+
+            wandb.log(
+                {
+                    "Sampled Mesh": [
+                        wandb.Object3D(
+                            file_path, caption=f"Sampled Mesh at Epoch {epoch}"
+                        )
+                    ]
+                },
+                step=epoch,
+            )
 
     def sample_and_visualize(self, epoch):
 
