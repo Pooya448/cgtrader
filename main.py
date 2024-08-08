@@ -8,14 +8,13 @@ def main(args):
     config_path = f"config/{args.model_type.lower()}.yaml"
     config = load_config(config_path)
 
+    wandb.init(project="3DGen-Task", config=config, name=args.run_name)
+    config = wandb.config
+
     if args.model_type.lower() == "vae":
         trainer = TrainerVAE(config, args.run_name)
     else:
         raise ValueError(f"Unsupported model type: {args.model_type}")
-
-    # Initialize wandb
-    wandb.init(project="3DGen-Task", config=config, name=args.run_name)
-    config = wandb.config
 
     trainer.run()
 
