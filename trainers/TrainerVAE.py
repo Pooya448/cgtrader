@@ -13,7 +13,7 @@ import numpy as np
 
 
 class TrainerVAE:
-    def __init__(self, config):
+    def __init__(self, config, run_name):
         self.config = config
 
         if torch.cuda.is_available():
@@ -33,6 +33,7 @@ class TrainerVAE:
 
         # Initialize model
         self.model = VoxelVAE(args=config["model"]).to(self.device)
+        wandb.watch(self.model)
 
         self.learning_rate = float(config["training"]["learning_rate"])
 
@@ -44,8 +45,8 @@ class TrainerVAE:
         self.checkpoint_freq = config["training"]["checkpoint_freq"]
         self.visualize_freq = config["training"]["visualize_freq"]
 
-        self.checkpoint_dir = Path("checkpoints")
-        self.vis_dir = Path("vis")
+        self.checkpoint_dir = Path("checkpoints") / Path(run_name)
+        self.vis_dir = Path("vis") / Path(run_name)
 
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.vis_dir.mkdir(parents=True, exist_ok=True)
@@ -196,7 +197,7 @@ class TrainerVAE:
             )
 
             if epoch % self.checkpoint_freq == 0:
-                checkpoint_path = f"checkpoints/vae_epoch_{epoch}.pth"
+                checkpoint_path = self.checkpoint_dir / f"vae_epoch_{epoch}.pth"
                 torch.save(self.model.state_dict(), checkpoint_path)
                 print(f"Model checkpoint saved to {checkpoint_path}")
 
@@ -209,4 +210,3 @@ class TrainerVAE:
         test_loss = self.test()
         print(f"Test Loss: {test_loss:.4f}")
 
-        wandb.log_artifact(self.model)

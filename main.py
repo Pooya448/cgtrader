@@ -4,17 +4,17 @@ from trainers.TrainerVAE import TrainerVAE
 import wandb
 
 
-def main(model_type):
-    config_path = f"config/{model_type.lower()}.yaml"
+def main(args):
+    config_path = f"config/{args.model_type.lower()}.yaml"
     config = load_config(config_path)
 
-    if model_type.lower() == "vae":
-        trainer = TrainerVAE(config)
+    if args.model_type.lower() == "vae":
+        trainer = TrainerVAE(config, args.run_name)
     else:
-        raise ValueError(f"Unsupported model type: {model_type}")
+        raise ValueError(f"Unsupported model type: {args.model_type}")
 
     # Initialize wandb
-    wandb.init(project="3DGen-Task", config=config)
+    wandb.init(project="3DGen-Task", config=config, name=args.run_name)
     config = wandb.config
 
     trainer.run()
@@ -25,8 +25,14 @@ def main(model_type):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a model.")
     parser.add_argument(
-        "model_type", type=str, help="Type of model to train (e.g., VAE)"
+        "--model_type",
+        type=str,
+        required=True,
+        help="The type of model to use (e.g., VAE)",
+    )
+    parser.add_argument(
+        "--run_name", type=str, required=True, help="The name of the run"
     )
     args = parser.parse_args()
 
-    main(args.model_type)
+    main(args)
