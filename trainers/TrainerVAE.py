@@ -62,7 +62,8 @@ class TrainerVAE:
                 / 100.0
             )
 
-        recon_x = torch.clamp(torch.sigmoid(recon_x), 1e-7, 1.0 - 1e-7)
+        # recon_x = torch.clamp(torch.sigmoid(recon_x), 1e-7, 1.0 - 1e-7)
+        recon_x = torch.clamp(recon_x, 1e-7, 1.0 - 1e-7)
 
         # Voxel-wise Reconstruction Loss using weighted binary cross-entropy
         voxel_loss = torch.mean(weighted_binary_crossentropy(recon_x, x).float())
@@ -205,8 +206,5 @@ class TrainerVAE:
                 self.sample_and_visualize(epoch)
                 self.sample_and_generate_mesh(epoch)
 
-        torch.save(self.model.state_dict(), "checkpoints/vae_final.pth")
-
         test_loss = self.test()
         print(f"Test Loss: {test_loss:.4f}")
-

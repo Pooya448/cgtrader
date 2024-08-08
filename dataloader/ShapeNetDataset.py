@@ -13,7 +13,7 @@ class ShapeNetDataset(Dataset):
         self.files = [
             file
             for file in self.dataset_path.glob("*.dd")
-            if self.class_code is None or self.class_code in file.stem
+            if self.class_code == "All" or self.class_code in file.stem
         ]
         self.batch_size = args["batch_size"]
         self.num_workers = args["num_workers"]
