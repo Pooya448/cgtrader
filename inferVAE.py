@@ -48,6 +48,17 @@ class InferVAE:
             save_voxel_as_mesh(voxel_grid, file_path)
             print(f"Saved sample {i} as {file_path}")
 
+            self.save_voxel_image(voxel_grid, i)
+
+    def save_voxel_image(self, voxel_grid, index):
+        fig = plt.figure(figsize=(8, 8))
+        ax = fig.add_subplot(111, projection="3d")
+        ax.voxels(voxel_grid > 0.5, facecolors="cyan", edgecolor="k")
+        ax.set_axis_off()
+        ax.view_init(elev=30, azim=45)
+        plt.savefig(self.output_dir / f"sample_{index}.png")
+        plt.close(fig)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Infer VAE and generate 3D objects.")
