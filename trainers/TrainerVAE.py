@@ -122,16 +122,25 @@ class TrainerVAE:
     def test(self):
         self.model.eval()
 
-        test_loss = 0
+        total_test_loss = 0
+        total_kl_loss = 0
+        total_voxel_loss = 0
 
         with torch.no_grad():
             for batch in tqdm(self.test_loader, desc="Testing"):
                 data = batch["voxels"].to(self.device)
                 recon_batch, mu, logvar = self.model(data)
                 voxel_loss, kl_loss = self.step_loss(recon_batch, data, mu, logvar)
-                loss_total = voxel_loss + kl_loss
-                test_loss += loss_total
-        return test_loss / len(self.test_loader.dataset)
+
+                total_kl_loss += kl_loss
+                total_voxel_loss += voxel_loss
+                total_test_loss += voxel_loss + kl_loss
+
+        avg_test_loss = total_test_loss / len(self.test_loader.dataset)
+        avg_voxel_loss = total_voxel_loss / len(self.test_loader.dataset)
+        avg_kl_loss = total_kl_loss / len(self.test_loader.dataset)
+
+        return avg_kl_loss, avg_voxel_loss, avg_test_loss
 
     def sample_and_generate_mesh(self, epoch):
         self.model.eval()
@@ -206,5 +215,7 @@ class TrainerVAE:
                 self.sample_and_visualize(epoch)
                 self.sample_and_generate_mesh(epoch)
 
-        test_loss = self.test()
-        print(f"Test Loss: {test_loss:.4f}")
+        avg_kl_loss, avg_voxel_loss, avg_test_loss = self.test()
+        print(
+            f"Test Loss: {avg_test_loss:.4f}, Voxel (Reconstruction) Loss: {avg_voxel_loss:.4f}, KL Loss: {avg_kl_loss:.4f}"
+        )
