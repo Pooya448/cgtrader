@@ -1,5 +1,5 @@
 .vscode/
 data/
-checkpoints/
+# checkpoints/
 wandb/
 __pycache__

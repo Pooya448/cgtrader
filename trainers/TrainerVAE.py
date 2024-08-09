@@ -63,7 +63,6 @@ class TrainerVAE:
             )
 
         recon_x = torch.clamp(recon_x, 1e-7, 1.0 - 1e-7)
-        x = torch.clamp(recon_x, 1e-7, 1.0 - 1e-7)
 
         # Voxel-wise Reconstruction Loss using weighted binary cross-entropy
         voxel_loss = torch.mean(weighted_binary_crossentropy(recon_x, x).float())
