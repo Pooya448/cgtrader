@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+### A simple building block of the encoder network.
+### Convolution -> BatchNormalization -> Activation
 class EncoderBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=0):
         super(EncoderBlock, self).__init__()
@@ -17,6 +19,8 @@ class EncoderBlock(nn.Module):
         return x
 
 
+### A simple building block of the encoder network.
+### TransposeConvolution -> BatchNormalization -> Activation
 class DecoderBlock(nn.Module):
     def __init__(
         self,
@@ -38,6 +42,8 @@ class DecoderBlock(nn.Module):
             output_padding=output_padding,
         )
         self.is_last_layer = is_last_layer
+
+        ### If this is the last layer in the decoder network, we don't want any ELUactivations
         if not self.is_last_layer:
             self.norm = nn.BatchNorm3d(out_channels)
             self.act = nn.ELU()
@@ -50,12 +56,13 @@ class DecoderBlock(nn.Module):
         return x
 
 
+### Linear module for latent code
 class LinearBlock(nn.Module):
     def __init__(self, in_features, out_features, use_batchnorm=True):
         super(LinearBlock, self).__init__()
         self.fc = nn.Linear(in_features, out_features)
         self.use_batchnorm = use_batchnorm
-        if use_batchnorm:
+        if self.use_batchnorm:
             self.bn = nn.BatchNorm1d(out_features)
 
     def forward(self, x):
@@ -69,8 +76,6 @@ class VoxelVAE(nn.Module):
     def __init__(self, args):
         super(VoxelVAE, self).__init__()
         self.latent_dim = args["latent_dim"]
-        encoder_channels = [1, 8, 16, 32, 64]
-        decoder_channels = [64, 64, 32, 16, 8, 1]
 
         # Encoder
         self.encoder = nn.ModuleList(
@@ -123,6 +128,7 @@ class VoxelVAE(nn.Module):
         logvar = self.fc_logvar(x)
         return mu, logvar
 
+    ### Does the reparametrization technic in training VAEs, ensuring a differentiability through the stochastic sampling process
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
@@ -133,7 +139,7 @@ class VoxelVAE(nn.Module):
         x = x.view(x.size(0), 64, 7, 7, 7)
         for block in self.decoder:
             x = block(x)
-        x = torch.sigmoid(x)  # Ensure output is in [0, 1]
+        x = torch.sigmoid(x)  ### Ensure output is in [0, 1]
         return x
 
     def forward(self, x):

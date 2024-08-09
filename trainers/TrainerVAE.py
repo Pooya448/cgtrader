@@ -26,22 +26,23 @@ class TrainerVAE:
             self.device = torch.device("cpu")
             print("Using CPU")
 
-        # Initialize dataset and dataloader
+        ### Initialize dataset and dataloader
         self.dataset = ShapeNetDataset(args=config["data"])
         self.train_loader = self.dataset.get_loader(train=True)
         self.test_loader = self.dataset.get_loader(train=False)
 
-        # Initialize model
+        ### Initialize model
         self.model = VoxelVAE(args=config["model"]).to(self.device)
         wandb.watch(self.model)
 
         self.learning_rate = float(config["training"]["learning_rate"])
 
-        # Initialize optimizer
+        ### Initialize optimizer
         self.optimizer = optim.Adam(
             self.model.parameters(), lr=self.learning_rate, weight_decay=1e-5
         )
 
+        ### Create the necessary directories
         self.checkpoint_freq = config["training"]["checkpoint_freq"]
         self.visualize_freq = config["training"]["visualize_freq"]
 
@@ -51,8 +52,10 @@ class TrainerVAE:
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.vis_dir.mkdir(parents=True, exist_ok=True)
 
+    ### Computes the loss for one batch
     def step_loss(self, recon_x, x, mu, logvar):
 
+        ### Defines the modified BCE loss based on the mentioned paper
         def weighted_binary_crossentropy(output, target):
             return (
                 -(
@@ -64,14 +67,15 @@ class TrainerVAE:
 
         recon_x = torch.clamp(recon_x, 1e-7, 1.0 - 1e-7)
 
-        # Voxel-wise Reconstruction Loss using weighted binary cross-entropy
+        ### Reconstruction Loss using weighted binary cross-entropy
         voxel_loss = torch.mean(weighted_binary_crossentropy(recon_x, x).float())
 
-        # KL Divergence from isotropic Gaussian prior
+        ### KL Divergence loss
         kl_loss = -0.5 * torch.mean(1 + 2 * logvar - mu.pow(2) - (2 * logvar).exp())
 
         return voxel_loss, kl_loss
 
+    ### Performs one step of training (for one batch), both forward and backward
     def train_step(self, data):
         data = data.to(self.device)
         self.optimizer.zero_grad()
@@ -89,6 +93,7 @@ class TrainerVAE:
             logvar,
         )
 
+    ### Performs one epoch of training
     def train_epoch(self, epoch):
         self.model.train()
 
@@ -118,6 +123,7 @@ class TrainerVAE:
 
         return avg_loss, avg_voxel_loss, avg_kl_loss
 
+    ### Performs testing of the model after training is finished
     def test(self):
         self.model.eval()
 
@@ -141,6 +147,8 @@ class TrainerVAE:
 
         return avg_kl_loss, avg_voxel_loss, avg_test_loss
 
+    ### Samples a random vector from the normal distribution of N(0, 1), and feeds it through
+    ### the decoder, generating a voxel grid. Then uses marching cubes to generate a mesh and save it.
     def sample_and_generate_mesh(self, epoch):
         self.model.eval()
 
@@ -150,13 +158,18 @@ class TrainerVAE:
             voxel = voxel.squeeze()
 
             file_path = self.vis_dir / f"sampled_mesh_epoch-{epoch}.obj"
+
+            ### Marching cubes and saving
             save_voxel_as_mesh(voxel, file_path)
 
+            ### Logging to WandB
             wandb.log(
                 {"Sampled Mesh": [wandb.Object3D(open(file_path))]},
                 step=epoch,
             )
 
+    ### Samples 4 random vectors from the normal distribution of N(0, 1), and feeds it through
+    ### the decoder, generating a voxel grid. Then plots and saves the voxels.
     def sample_and_visualize(self, epoch):
 
         self.model.eval()
@@ -180,6 +193,7 @@ class TrainerVAE:
             plt.savefig(vis_path)
             plt.close(fig)
 
+            ### Logging to WandB
             wandb.log(
                 {"Samples": [wandb.Image(str(vis_path))]},
                 step=epoch,
@@ -205,15 +219,18 @@ class TrainerVAE:
                 step=epoch,
             )
 
+            ### Saving model checkpoint
             if epoch % self.checkpoint_freq == 0:
                 checkpoint_path = self.checkpoint_dir / f"vae_epoch_{epoch}.pth"
                 torch.save(self.model.state_dict(), checkpoint_path)
                 print(f"Model checkpoint saved to {checkpoint_path}")
 
+            ### Visualize the network output
             if epoch % self.visualize_freq == 0:
                 self.sample_and_visualize(epoch)
                 self.sample_and_generate_mesh(epoch)
 
+        ### Testing on the test set
         avg_kl_loss, avg_voxel_loss, avg_test_loss = self.test()
         print(
             f"Test Loss: {avg_test_loss:.4f}, Voxel (Reconstruction) Loss: {avg_voxel_loss:.4f}, KL Loss: {avg_kl_loss:.4f}"

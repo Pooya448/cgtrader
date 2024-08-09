@@ -1,3 +1,5 @@
+### To parse the .YAML config file into a python nested dictionary
+
 import yaml
 
 
@@ -9,7 +11,7 @@ def load_config(config_path="config.yaml"):
 
 if __name__ == "__main__":
     import argparse
-
+    
     parser = argparse.ArgumentParser(description="Parse a YAML config file.")
     parser.add_argument("config_path", type=str, help="Path to the config YAML file.")
     args = parser.parse_args()

@@ -10,6 +10,8 @@ class ShapeNetDataset(Dataset):
     def __init__(self, args):
         self.dataset_path = Path(args["dataset_path"])
         self.class_code = args["class_code"]
+
+        ### Selecting the files for the speific class code mentioned in the config
         self.files = [
             file
             for file in self.dataset_path.glob("*.dd")
@@ -18,6 +20,7 @@ class ShapeNetDataset(Dataset):
         self.batch_size = args["batch_size"]
         self.num_workers = args["num_workers"]
         self.shuffle = args["shuffle"]
+
         self.split_ratio = args["split_ratio"]
 
         num_files = len(self.files)
@@ -38,7 +41,11 @@ class ShapeNetDataset(Dataset):
         file_path = self.files[idx]
         voxel_data = dd.io.load(str(file_path))["data"]
         voxel_tensor = torch.tensor(voxel_data, dtype=torch.float32)
+
+        ### Make the voxel grid using a right hand coordinate frame
         voxel_tensor = torch.permute(voxel_tensor, (2, 0, 1)).unsqueeze(0)
+
+        ### Normalize the values of voxels to be 0 and 1
         voxel_tensor = voxel_tensor * 0.5 + 0.5
         return {"voxels": voxel_tensor}
 
@@ -47,6 +54,7 @@ class ShapeNetDataset(Dataset):
         base_seed = int.from_bytes(random_data, byteorder="big")
         np.random.seed(base_seed + worker_id)
 
+    ### Get the dataloader instance of the dataset
     def get_loader(self, train=True):
         files = self.train_files if train else self.test_files
         dataset = torch.utils.data.Subset(self, files.indices)
@@ -61,7 +69,7 @@ class ShapeNetDataset(Dataset):
 
 
 if __name__ == "__main__":
-    # Example test
+    ### Test example to see if the class works
 
     config = {
         "dataset_path": "data/",
@@ -72,9 +80,6 @@ if __name__ == "__main__":
         "split_ratio": 0.8,
     }
     dataset = ShapeNetDataset(config)
-    print(f'Found {len(dataset)} files for class {config["class_code"]}.')
+
     train_loader = dataset.get_loader(train=True)
     test_loader = dataset.get_loader(train=False)
-    print(
-        f"Training set size: {len(train_loader.dataset)}, Testing set size: {len(test_loader.dataset)}"
-    )

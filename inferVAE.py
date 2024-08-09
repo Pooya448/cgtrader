@@ -7,6 +7,7 @@ from visualize import save_voxel_as_mesh
 import yaml
 
 
+### Takes a model checkpoint path and generates samples from the trained model
 class InferVAE:
     def __init__(
         self,
@@ -18,6 +19,7 @@ class InferVAE:
         if checkpoint_path is None:
             raise ValueError("You must provide a valid checkpoint_path.")
 
+        ### Load the config
         with open(config_path, "r") as file:
             self.config = yaml.safe_load(file)
 
@@ -25,18 +27,21 @@ class InferVAE:
 
         self.model = VoxelVAE(args=self.config["model"]).to(self.device)
 
+        ### Load the weights to the model
         self.model.load_state_dict(torch.load(checkpoint_path))
         self.model.eval()
 
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    ### Samples from normal distribution and feeds it through the decoder
     def sample(self, num_samples=8):
         with torch.no_grad():
             z = torch.randn(num_samples, self.model.latent_dim).to(self.device)
             samples = self.model.decode(z).cpu().numpy()
         return samples
 
+    ### Generates meshes and plots by sampling from the latent space
     def generate_and_save(self, num_samples=8):
         samples = self.sample(num_samples=num_samples)
         samples = samples.squeeze()
